@@ -170,12 +170,15 @@ def predict():
     conf = float(best_box.conf[0])
     cls_id = int(best_box.cls[0])
     label = model.names[cls_id]
+    # Normalisasi: model output pakai underscore, dict pakai spasi
+    label_key = label.replace('_', ' ').title()
 
     print("Label :", label)
+    print("Label key:", label_key)
     print("Confidence :", conf)
 
     # Confidence minimal
-    if conf < 0.50:
+    if conf < 0.35:
         os.makedirs("static", exist_ok=True)
         output_path = "static/hasil_prediksi.jpg"
         cv2.imwrite(output_path, img_output)
@@ -189,7 +192,7 @@ def predict():
             'solusi': 'Coba ambil foto lebih jelas dan fokus pada daun.'
         })
 
-    if label not in info_penyakit:
+    if label_key not in info_penyakit:
         os.makedirs("static", exist_ok=True)
         output_path = "static/hasil_prediksi.jpg"
         cv2.imwrite(output_path, img_output)
@@ -224,10 +227,10 @@ def predict():
     return jsonify({
         'result_image_url': '/' + output_path,
         'terdeteksi': True,
-        'nama_penyakit': info_penyakit[label]['nama'],
+        'nama_penyakit': info_penyakit[label_key]['nama'],
         'confidence': f"{conf*100:.1f}%",
-        'deskripsi': info_penyakit[label]['desc'],
-        'solusi': info_penyakit[label]['solusi']
+        'deskripsi': info_penyakit[label_key]['desc'],
+        'solusi': info_penyakit[label_key]['solusi']
     })
 
 @socketio.on('video_frame')
