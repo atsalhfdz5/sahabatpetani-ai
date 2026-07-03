@@ -14,10 +14,20 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Load model YOLO (best.pt)
 path_model = os.path.join(os.path.dirname(__file__), 'best.pt')
-model = YOLO(path_model)
+# Lazy-load model to avoid crashing workers at import time
+model = None
 
-print("Model yang digunakan:", path_model)
-print("Nama kelas:", model.names)
+def get_model():
+    global model
+    if model is None:
+        try:
+            model = YOLO(path_model)
+            print("Model yang digunakan:", path_model)
+            print("Nama kelas:", model.names)
+        except Exception as e:
+            print(f"Gagal memuat model: {e}")
+            model = None
+    return model
 
 # Setelan akurasi pengujian (40%)
 THRESHOLD_AKURASI = 0.25
@@ -57,9 +67,12 @@ def core_proses_ai(image_bytes):
             return {'terdeteksi': False, 'label': 'Gambar Korup', 'score': 0, 'deskripsi': '', 'img_output': None}
 
         img_asli=preprocess_image(img_asli)
-        results=model(img_asli, conf=THRESHOLD_AKURASI, iou=0.45)[0]
+        m = get_model()
+        if m is None:
+            return {'terdeteksi': False, 'label': 'Model Error', 'score': 0, 'deskripsi': 'Model tidak tersedia untuk saat ini.', 'img_output': None}
+        results=m(img_asli, conf=THRESHOLD_AKURASI, iou=0.45)[0]
         if len(results.boxes)==0:
-            results=model(preprocess_image(cv2.GaussianBlur(img_asli,(3,3),0)), conf=0.15, iou=0.45)[0]
+            results=m(preprocess_image(cv2.GaussianBlur(img_asli,(3,3),0)), conf=0.15, iou=0.45)[0]
         
         terdeteksi_valid = False
         label_tertinggi = "Tidak Terdeteksi"
@@ -74,7 +87,7 @@ def core_proses_ai(image_bytes):
             confidence = float(box.conf[0])
             class_idx = int(box.cls[0])
             
-            pred_label = model.names[class_idx]
+            pred_label = m.names[class_idx]
 
             terdeteksi_valid = True
             if confidence > score_tertinggi:
@@ -120,15 +133,20 @@ def predict():
     img=preprocess_image(img)
     img_output=img.copy()
 
+    # Lazy-load model and guard
+    m = get_model()
+    if m is None:
+        return jsonify({'error': 'Model tidak tersedia saat ini.'}), 503
+
     # Confidence disarankan 0.30 - 0.40
     # Single inference
-    results = model(img, conf=0.25, iou=0.45)[0]
+    results = m(img, conf=0.25, iou=0.45)[0]
 
     print("Jumlah box:", len(results.boxes))
 
     for box in results.boxes:
         print(
-        "Label:", model.names[int(box.cls[0])],
+        "Label:", m.names[int(box.cls[0])],
         "Confidence:", float(box.conf[0])
     )
 
